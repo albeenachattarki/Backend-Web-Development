@@ -23,4 +23,26 @@
 //   const rateLimit = require('express-rate-limit');
 //   module.exports = rateLimit({ ...options });
 
-module.exports = (req, res, next) => next(); // TODO: replace this stub
+const rateLimit = require('express-rate-limit');
+
+// The default MemoryStore keeps counters inside one Node.js process. In a
+// multi-instance deployment behind a load balancer, each instance would have
+// its own counter and a client could effectively get the limit once per
+// instance. A Redis-backed store from rate-limit-redis would put the counter
+// in shared Redis so every instance enforces the same limit.
+module.exports = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  handler: (req, res) => {
+    const resetTime = req.rateLimit && req.rateLimit.resetTime;
+    const retryAfter = resetTime instanceof Date
+      ? Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 1000))
+      : 15 * 60;
+
+    res.set('Retry-After', String(retryAfter));
+    res.status(429).json({ error: 'Too many requests, please try again later.' });
+  },
+});
